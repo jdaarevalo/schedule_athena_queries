@@ -6,7 +6,7 @@ Description: >
 Metadata:
   AWS::ServerlessRepo::Application:
     Name: Athena Query execution
-    Description: Implementation of Serverless Stack to execute queries
+    Description: Implementation of Serverless Stack to schedule queries
     Author: Jose Arevalo
     Labels:
       - state-machine
@@ -17,7 +17,6 @@ Resources:
 ##########################################################################
 # IAM Role for StateMachine
 ##########################################################################
-
   DataProcessingStateMachineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -40,64 +39,5 @@ Resources:
   AthenaQueriesStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      DefinitionString:
-        Fn::Sub: |-
-          {
-            "Comment": "A description of my state machine",
-            "StartAt": "Athena StartQueryExecution",
-            "States": {
-              "Athena StartQueryExecution": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::athena:startQueryExecution",
-                "Parameters": {
-                  "QueryString.$": "$.QueryString",
-                  "WorkGroup": "primary",
-                  "ResultConfiguration": {
-                    "OutputLocation.$": "$.OutputLocation"
-                  }
-                },
-                "Next": "Wait",
-                "ResultSelector": {
-                  "QueryExecution": {
-                    "QueryExecutionId.$": "$.QueryExecutionId"
-                  }
-                }
-              },
-              "Wait": {
-                "Type": "Wait",
-                "Seconds": 10,
-                "Next": "Athena GetQueryExecution"
-              },
-              "Athena GetQueryExecution": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::athena:getQueryExecution",
-                "Parameters": {
-                  "QueryExecutionId.$": "$.QueryExecution.QueryExecutionId"
-                },
-                "Next": "Choice"
-              },
-              "Choice": {
-                "Type": "Choice",
-                "Choices": [
-                  {
-                    "Variable": "$.QueryExecution.Status.State",
-                    "StringEquals": "SUCCEEDED",
-                    "Next": "Success"
-                  },
-                  {
-                    "Variable": "$.QueryExecution.Status.State",
-                    "StringEquals": "FAILED",
-                    "Next": "Fail"
-                  }
-                ],
-                "Default": "Wait"
-              },
-              "Success": {
-                "Type": "Succeed"
-              },
-              "Fail": {
-                "Type": "Fail"
-              }
-            }
-          }
+      DefinitionUri: src/stm_star_query_execution.asl.json
       RoleArn: !GetAtt DataProcessingStateMachineRole.Arn
