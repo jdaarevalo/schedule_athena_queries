@@ -8,6 +8,8 @@ This project automates the execution of Athena queries using AWS EventBridge Sch
 - **Flexible Scheduling**: Supports 'at', 'rate', and 'cron' expressions for versatile scheduling options.
 - **State Machine Integration**: Leverages AWS Step Functions for efficient query management and execution tracking.
 - **Serverless Deployment**: Built on AWS SAM for easy deployment and scalability.
+  
+![schedule-athena-queries](https://github.com/jdaarevalo/schedule_athena_queries/assets/2475570/1240bea4-f99a-4d7c-9de2-bef9c4fcde04)
 
 ## How It Works
 1. **Define Your Query**: Create a YAML file into `src/queries` with the query definition and parameters. Use the `template_query.yaml` as example.
