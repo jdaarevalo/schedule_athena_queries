@@ -98,7 +98,7 @@ Resources:
   AthenaQueriesStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: StateMachine-Athena-QueryExecution-two
+      StateMachineName: StateMachine-Athena-QueryExecution
       RoleArn: !GetAtt DataProcessingStateMachineRole.Arn
       DefinitionString: |-
         {
