@@ -198,8 +198,4 @@ Resources:
     Type: Custom::EventBridgeSyncFunction
     Properties:
       ServiceToken: !GetAtt EventBridgeSyncFunction.Arn
-      Create:
-        Action: "create"
-      Update:
-        Action: "update"
       DeploymentId: !Ref DeploymentId  # This line uses the DeploymentId parameter

@@ -17,7 +17,7 @@ mkdir -p libs/python/lib/python3.10/site-packages/
 pip install -r requirements.txt --target libs/python/lib/python3.10/site-packages
 
 
-STACK_NAME="test-lambda"
+STACK_NAME="schedule-athena-queries"
 
 
 template_file=$(pwd)/template.yaml
