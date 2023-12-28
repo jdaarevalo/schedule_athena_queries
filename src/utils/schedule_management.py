@@ -36,14 +36,14 @@ def safe_get(dictionary: Dict, *keys):
     return dictionary
 
 # Main functions
-def validate_or_initialize_schedule_group(client: boto3.client, schedule_group_name: str) -> Optional[str]:
+def validate_or_initialize_schedule_group(client: boto3.client, schedule_group_name: str, stack_tags: List = []) -> Optional[str]:
     """Validate or initialize a schedule group."""
     try:
         response = client.list_schedule_groups(NamePrefix=schedule_group_name)
         schedule_groups = response.get("ScheduleGroups")
 
         if not schedule_groups:
-            return create_schedule_group(client, schedule_group_name)
+            return create_schedule_group(client, schedule_group_name, stack_tags)
         return safe_get(schedule_groups[0], "Arn")
     except Exception as e:
         raise ScheduleOperationError("validate_or_initialize_schedule_group", str(e))
@@ -81,7 +81,9 @@ def find_schedule_by_name(schedule_yamls: Dict[str, Dict], schedule_name: str) -
 
 def get_schedule_params(schedule_group_name: str, schedule_dic: Dict, output_location: str, stm_arn: str, role_arn: str) -> Dict:
     """Get schedule parameters."""
-    input_json = json.dumps({"QueryString": schedule_dic["query_string"], "OutputLocation": output_location})
+    input_json = json.dumps({"QueryString": schedule_dic["query_string"],
+                             "OutputLocation": output_location,
+                             "WaitSeconds": schedule_dic.get("wait_seconds", 60)})
     schedule_params = {
         'FlexibleTimeWindow': {'Mode': 'OFF'},
         'ScheduleExpression': schedule_dic["schedule_expression"],
@@ -96,9 +98,11 @@ def get_schedule_params(schedule_group_name: str, schedule_dic: Dict, output_loc
         }
     }
     # Add optional date parameters
-    for key in ["start_date", "end_date"]:
-        if key in schedule_dic:
-            schedule_params[key.capitalize()] = datetime.strptime(schedule_dic[key], "%Y-%m-%d %H:%M")
+    if "start_date" in schedule_dic:
+        schedule_params["StartDate"] = datetime.strptime(schedule_dic["start_date"], "%Y-%m-%d %H:%M")
+    if "end_date" in schedule_dic:
+        schedule_params["EndDate"] = datetime.strptime(schedule_dic["end_date"], "%Y-%m-%d %H:%M")
+
     return schedule_params
 
 def schedule_operation(client: boto3.client, operation: str, **kwargs):

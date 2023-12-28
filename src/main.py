@@ -1,74 +1,54 @@
-# TODO
-# execute query
-# check the s3_output, is a file created on failure?
-# trigger next lambda to check status
-
-
 import os
-import sys
-import re
-import json
-import yaml
 import boto3
+import logging
+import cfnresponse
 
-from datetime import datetime, timedelta
-# import awswrangler as wr
 
-from aws_lambda_powertools import Logger
-from utils import interpret_relative_time
+from utils.yaml_handler import list_yaml_files, read_multiple_yamls
+from utils.schedule_management import sync_schedules, validate_or_initialize_schedule_group
+from utils.schedule_validation import validate_schedule_files
 
-# ENVIRONMENT_NAME = os.getenv("ENVIRONMENT_NAME")
-# SOURCE_BUCKET_NAME = os.getenv("SOURCE_BUCKET_NAME")
-# TARGET_BUCKET_NAME = os.getenv("TARGET_BUCKET_NAME")
+# Initialize logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-## Rollbar alerts
-# import rollbar
-# ROLLBAR_SECRET_KEY = os.getenv("ROLLBAR_SECRET_KEY")
-# rollbar.init(ROLLBAR_SECRET_KEY, ENVIRONMENT_NAME)
+# Initialize boto3 session and client
+session = boto3.Session()
+client = session.client('scheduler', region_name='eu-west-1')
 
-logger = Logger()
-b3s = boto3.Session()
+# Environment variables
+ROLE_ARN = os.getenv("ROLE_ARN")
+STACK_TAGS = os.getenv("STACK_TAGS", [])
+STM_ARN = os.getenv("STM_ARN")
+OUTPUT_LOCATION = os.getenv("OUTPUT_LOCATION")
+SCHEDULE_GROUP_NAME = os.getenv("SCHEDULE_GROUP_NAME")
+YAML_QUERIES_PATH = "queries/"
 
-# @rollbar.lambda_function
-def lambda_handler(event, _):
-    # Invoke lambda by event
-    logger.info({"action": "invoke_lambda", "payload": {"event": event}})
+def lambda_handler(event, context):
+    logger.info({"action": "invoke_lambda", "payload": {"event": event, "context":context}})
     try:
-        yaml_path = "queries/query_one.yaml"
-        yaml_file = read_yaml(yaml_path)
-        query = format_query(yaml_file)
-        execute_athena_query(query)
+        # Read and validate YAML files containing the schedules
+        paths = list_yaml_files(YAML_QUERIES_PATH)
+        schedule_yamls = read_multiple_yamls(paths)
+        validate_schedule_files(schedule_yamls)
+        logger.info({"action": "validate_schedule_files", "payload": {"len_yaml":len(schedule_yamls)}})
 
-        return {
-            'statusCode': 200,
-            'body': json.dumps({  })
-        }
-    except Exception as exception:
-        logger.error(
-            {
-                "action": "lambda_execution_error",
-                "payload": {"exception": exception, "event": event},
-            }
-        )
+        # Ensure the schedule group exists or create a new one
+        validate_or_initialize_schedule_group(client, SCHEDULE_GROUP_NAME, STACK_TAGS)
+        logger.info({"action": "validate_or_initialize_schedule_group", "payload": {"group_name":SCHEDULE_GROUP_NAME}})
 
-def execute_athena_query(query:str):
-    logger.info({"action": "start_query_execution", "payload": {"query": query[:30]}})
-    pass
+        # Sync the schedules from the YAML files with the scheduler service
+        sync_schedules(client, SCHEDULE_GROUP_NAME, schedule_yamls, OUTPUT_LOCATION, STM_ARN, ROLE_ARN)
+        logger.info({"action": "validate_or_initialize_schedule_group", 
+                    "payload": {"group_name":SCHEDULE_GROUP_NAME, "schedule_yamls":schedule_yamls}})
 
-def format_query(yaml_file: dict) -> str:
-    # Process parameters
-    parameters = yaml_file['parameters']
-    for key, value in parameters.items():
-        if "date" in key:
-            parameters[key] = interpret_relative_time.interprete(value.lower()).strftime('%Y-%m-%d %H:%M:%S')
+        if event.get('ServiceToken'):
+            response_data = {"message ": "Schedules synchronized successfully."}
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, "Custom resource executed successfully")
+     
+    except Exception as execution_error:
+        logger.error(str(execution_error))
 
-    # Format the query with the parameters
-    query = yaml_file["query"].format(**parameters)
-    logger.info({"action": "query", "payload": {"quey": query}})
-    return query
-
-def read_yaml(path: str) -> dict:
-    with open(path, "r") as file:
-        yaml_file = yaml.safe_load(file)
-    logger.info({"action": "read_yaml_file", "payload": {"yaml_file": yaml_file}})
-    return yaml_file
+        if event.get('ServiceToken'):
+            error_message = f"An error occurred: {str(execution_error)}"
+            cfnresponse.send(event, context, cfnresponse.FAILED, {}, error_message)

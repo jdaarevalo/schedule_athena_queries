@@ -1,52 +1,58 @@
-# The name of the query schedule that you are creating.
-# Length Constraints: Minimum length of 1. Maximum length of 64.
-# Pattern: ^[0-9a-zA-Z-_.]+$
-# Required: Yes
-name: "query template"
+# Query Schedule Configuration
+# This template defines a schedule for triggering ATHENA queries.
 
-# schedule_expression: Defines when the query schedule is triggered. Supported formats:
-# 1. At Expression: Creates a one-time schedule. 
-#    Format: at(yyyy-mm-ddThh:mm:ss)
-#    Example: at(2023-01-01T10:00:00) - Runs once on January 1, 2023, at 10:00 AM.
-#
-# 2. Rate Expression: Creates a recurring schedule at regular intervals.
-#    Format: rate(value unit)
-#    Example: rate(15 minutes) - Runs every 15 minutes.
-#    Units: minutes, hours, days.
-#
-# 3. Cron Expression: Creates a recurring schedule at specific times.
-#    Format: cron(fields)
-#    Example: cron(15 10 ? * 6L 2022-2023) - Runs at 10:15 AM UTC on the last Friday of each month during 2022 to 2023.
-#    Fields: Minutes, Hours, Day-of-month, Month, Day-of-week, Year (optional).
-#
-# Usage Notes:
-# - At Expressions are for one-time schedules, useful for single events.
-# - Rate Expressions are for regular intervals, such as every few minutes or days.
-# - Cron Expressions are for specific times and complex patterns, like every weekday at a specific hour.
-# - Consider time zone differences when scheduling (UTC is commonly used).
-#
-# AWS Documentation for detailed syntax and examples: https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html
-schedule_expression: "cron(0 * * * *)"
+# Schedule Name
+# - Description: The unique identifier for the query schedule.
+# - Constraints: Minimum length of 1, maximum length of 64.
+# - Pattern: Alphanumeric, dash (-), underscore (_), and period (.) are allowed.
+# - Required: Yes
+name: "query_template"
 
-# Specifies whether the schedule is enabled or disabled.
-# Valid Values: ENABLED | DISABLED
-# Required: No, by default ENABLED
-state: "ENABLED"
+# Schedule Expression
+# - Description: Defines when the query schedule is triggered. Supports 'at', 'rate', and 'cron' expressions.
+# - Types:
+#   1. At Expression: For one-time schedules. Format: at(yyyy-mm-ddThh:mm:ss)
+#   2. Rate Expression: For regular intervals. Format: rate(value unit)
+#   3. Cron Expression: For specific times/complex patterns. Format: cron(fields)
+# - See AWS Documentation for detailed syntax: https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html
+# - Required: Yes
+schedule_expression: "cron(*/5 * * * ? *)"
 
-start_date: "2023-12-28 12:35"
-
-end_date: "2023-12-29 12:35"
-
-# OPTIONAL
+# Schedule Description
+# - Description: Provides details about the purpose or nature of the scheduled query.
+# - Example: "Schedule to trigger Athena Query STF"
+# - Required: No
 schedule_description: "Schedule to trigger Athena Query STF"
 
+# State
+# - Description: Specifies whether the schedule is enabled or disabled.
+# - Valid Values: ENABLED (default) | DISABLED
+# - Required: No
+state: "ENABLED"
+
+# Start Date
+# - Description: The starting date and time for the query execution.
+# - Format: "%Y-%m-%d %H:%M"
+# - Required: No
+start_date: "2023-12-28 12:35"
+
+# End Date
+# - Description: The ending date and time for the query execution.
+# - Format: "%Y-%m-%d %H:%M"
+end_date: "2023-12-29 12:35"
+
 # SQL Query
-# Placeholders within the query (like {start_date}) will be replaced by the actual parameter values
-# This query selects name, age, and gender from the 'employees' table
-# The WHERE clause filters records between start_date and end_date and applies an additional condition
+# - Description: The SQL query to be executed. Supports placeholders for dynamic parameter insertion.
+# - Note: Placeholders (like {start_date}) are replaced with actual values at runtime.
 query_string: |
   INSERT INTO formatted_data.transactions
   SELECT transaction_type, value, date
   FROM raw_data.transactions
   WHERE date >= to_char(date_trunc('hour', current_timestamp - interval '1' hour), 'yyyy-mm-dd-hh24')
     AND date < to_char(date_trunc('hour', current_timestamp), 'yyyy-mm-dd-hh24')
+
+# Wait Seconds
+# - Description: The time interval in seconds for the state machine to check if the query has finished.
+# - Default: 60
+# - Required: No
+wait_seconds: 10

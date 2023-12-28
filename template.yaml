@@ -13,6 +13,20 @@ Metadata:
       - athena-query
     SemanticVersion: 0.1.0
 
+Parameters:
+  DeploymentId:
+    Type: String
+    Description: Unique identifier for each deployment
+
+  ScheduleGroupName:
+    Type: String
+    Default: "AthenaScheduledQueries"
+    Description: "SCHEDULE GROUP NAME created"
+
+  QueryOutputLocation:
+    Type: String
+    Description: "S3 URI to put Athena Query results location, like (s3://aws-athena-query-results-{AWS_ACCOUNT_ID}-eu-west-1/)"
+
 Resources:
 ##########################################################################
 # IAM Role for StateMachine
@@ -20,7 +34,7 @@ Resources:
   DataProcessingStateMachineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: latana.role.serverless-data-pipe.state-machine
+      #RoleName: latana.role.serverless-data-pipe.state-machine
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -29,9 +43,54 @@ Resources:
               Service: states.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/CloudWatchFullAccess
-        - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/AmazonAthenaFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+##########################################################################
+# IAM Role for Lambda Function
+##########################################################################
+  EventBridgeSyncFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      #RoleName: latana.role.lambda.EventBridgeSyncRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess
+
+##########################################################################
+# IAM Role for Scheduler Execution
+##########################################################################
+  SchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      #RoleName: latana.role.lambda.SchedulerExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: "scheduler_start_execution_state_function_athena_queries"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource:
+                  - !Ref AthenaQueriesStateMachine
 
 ##########################################################################
 # State Machine
@@ -39,5 +98,108 @@ Resources:
   AthenaQueriesStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      DefinitionUri: src/stm_star_query_execution.asl.json
+      StateMachineName: StateMachine-Athena-QueryExecution-two
       RoleArn: !GetAtt DataProcessingStateMachineRole.Arn
+      DefinitionString: |-
+        {
+          "Comment": "A description of my state machine",
+          "StartAt": "Athena StartQueryExecution",
+          "States": {
+            "Athena StartQueryExecution": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::athena:startQueryExecution",
+              "Parameters": {
+                "QueryString.$": "$.QueryString",
+                "WorkGroup": "primary",
+                "ResultConfiguration": {
+                  "OutputLocation.$": "$.OutputLocation"
+                }
+              },
+              "Next": "Wait",
+              "ResultSelector": {
+                "QueryExecutionId.$": "$.QueryExecutionId"
+              },
+              "ResultPath": "$.QueryExecution"
+            },
+            "Wait": {
+              "Type": "Wait",
+              "Next": "Athena GetQueryExecution",
+              "SecondsPath": "$.WaitSeconds"
+            },
+            "Athena GetQueryExecution": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::athena:getQueryExecution",
+              "Parameters": {
+                "QueryExecutionId.$": "$.QueryExecution.QueryExecutionId"
+              },
+              "Next": "Choice"
+            },
+            "Choice": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.QueryExecution.Status.State",
+                  "StringEquals": "SUCCEEDED",
+                  "Next": "Success"
+                },
+                {
+                  "Variable": "$.QueryExecution.Status.State",
+                  "StringEquals": "FAILED",
+                  "Next": "Fail"
+                }
+              ],
+              "Default": "Wait"
+            },
+            "Success": {
+              "Type": "Succeed"
+            },
+            "Fail": {
+              "Type": "Fail"
+            }
+          }
+        }
+
+##########################################################################
+# Lambda Function
+##########################################################################
+  EventBridgeSyncFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: main.lambda_handler
+      Runtime: python3.10
+      Timeout: 180
+      Role: !GetAtt EventBridgeSyncFunctionRole.Arn
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          STM_ARN: !Ref AthenaQueriesStateMachine
+          ROLE_ARN: !GetAtt SchedulerExecutionRole.Arn
+          SCHEDULE_GROUP_NAME: !Ref ScheduleGroupName
+          OUTPUT_LOCATION: !Ref QueryOutputLocation
+      Layers:
+        - !Ref libs
+
+##########################################################################
+# Layer to the Lambda Function
+##########################################################################
+  libs:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: lambda-dependencies
+      Description: Dependencies for Lambda, include YAML
+      ContentUri: libs/
+
+##########################################################################
+# Invoke the Lambda Function to sync the schedules
+##########################################################################
+  EventBridgeSyncFunctionCustom:
+    Type: Custom::EventBridgeSyncFunction
+    Properties:
+      ServiceToken: !GetAtt EventBridgeSyncFunction.Arn
+      Create:
+        Action: "create"
+      Update:
+        Action: "update"
+      DeploymentId: !Ref DeploymentId  # This line uses the DeploymentId parameter

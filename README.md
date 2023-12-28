@@ -12,6 +12,7 @@ $ ./deploy.sh production
 
 install requirements.txt
 # install libs
+rm -rf libs
 mkdir -p libs/python/lib/python3.10/site-packages/
 pip install -r requirements.txt --target libs/python/lib/python3.10/site-packages
 

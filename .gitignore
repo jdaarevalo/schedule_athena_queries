@@ -162,3 +162,4 @@ libs/
 *.ipynb_checkpoints
 *.ipynb
 .aws-sam
+.DS_Store
