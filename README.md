@@ -78,7 +78,8 @@ AWS Glue is a fully managed ETL service that simplifies processing large amounts
 #### Cost Implications:
 While AWS Glue only charges for the runtime ($0.44 per DPU-Hour for Python Shell jobs, billed per second with a 1-minute minimum), you pay for the job's entire duration, including idle time while waiting for Athena queries to execute. This can add up significantly:
 
-- **Monthly Cost**: \(0.0625 \text{ DPUs} \times 225 \text{ hours} \times 0.44 \text{ USD per DPU-Hour} = 6.19 \text{ USD}\).
+- **Monthly Cost**: 0.0625 DPUs×225 hours×0.44 USD per DPU-Hour=6.19 USD (Python shell ETL job cost).
+
 
 ### Why Not Lambda?
 AWS Lambda excels at short, event-driven processes. However, for long-running tasks like executing Athena queries, it may not be the most suitable:
