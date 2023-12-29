@@ -21,6 +21,7 @@ This project automates the execution of Athena queries using AWS EventBridge Sch
 ### Prerequisites
 - AWS Account
 - Configured AWS CLI
+- AWS SAM CLI installed
 - Basic understanding of AWS services (EventBridge, Step Functions, Athena)
 
 ### Quick Setup
